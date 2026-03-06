@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stev Dashboard</title>
+    <title> Dashboard · Multi Tab</title>
     <!-- Firebase Modular SDK -->
     <script type="module">
         // Import Firebase
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
         import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
 
+        // Konfigurasi Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyCXQgIw_7SpToZfk18o30WhuukaYBUD1No",
             authDomain: "future-61133.firebaseapp.com",
@@ -21,22 +22,9 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
-        const tradesCollection = collection(db, "stev_trades_v3");
 
-        // Elemen DOM
-        const tableBody = document.getElementById('trade-table-body');
-        const winCountSpan = document.getElementById('win-count');
-        const lossCountSpan = document.getElementById('loss-count');
-        const profitAmountSpan = document.getElementById('profit-amount');
-        const lossAmountSpan = document.getElementById('loss-amount');
-        const totalTradesSpan = document.getElementById('total-trades');
-        const netPnlSpan = document.getElementById('net-pnl');
-        const winRateSpan = document.getElementById('win-rate');
-        const lastUpdatedSpan = document.getElementById('last-updated');
+        // ================== DARK MODE (global) ==================
         const themeToggle = document.getElementById('theme-toggle');
-
-        let trades = [];
-
         function setTheme(theme) {
             if (theme === 'dark') {
                 document.body.classList.add('dark');
@@ -47,7 +35,6 @@
             }
             localStorage.setItem('theme', theme);
         }
-
         const savedTheme = localStorage.getItem('theme');
         if (savedTheme) {
             setTheme(savedTheme);
@@ -55,13 +42,18 @@
             const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
             setTheme(prefersDark ? 'dark' : 'light');
         }
-
         themeToggle.addEventListener('click', () => {
             const isDark = document.body.classList.contains('dark');
             setTheme(isDark ? 'light' : 'dark');
         });
 
-        // Format waktu UTC+7
+        // ================== UTILS ==================
+        function formatNumber(num, decimals = 2) {
+            return num.toFixed(decimals).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+        }
+
+        // Update waktu global (UTC+7)
+        const lastUpdatedSpan = document.getElementById('last-updated');
         function updateLastUpdated() {
             const now = new Date();
             const utc7 = new Date(now.getTime() + (7 * 60 * 60 * 1000));
@@ -71,149 +63,189 @@
         updateLastUpdated();
         setInterval(updateLastUpdated, 1000);
 
-        // Format angka dengan pemisah ribuan (koma)
-        function formatNumber(num, decimals = 2) {
-            return num.toFixed(decimals).replace(/\d(?=(\d{3})+\.)/g, '$&,');
-        }
+        function setupTab(tabId, collectionName) {
+            const tableBody = document.getElementById(`table-body-${tabId}`);
+            const winCountSpan = document.getElementById(`win-count-${tabId}`);
+            const lossCountSpan = document.getElementById(`loss-count-${tabId}`);
+            const profitAmountSpan = document.getElementById(`profit-amount-${tabId}`);
+            const lossAmountSpan = document.getElementById(`loss-amount-${tabId}`);
+            const totalTradesSpan = document.getElementById(`total-trades-${tabId}`);
+            const netPnlSpan = document.getElementById(`net-pnl-${tabId}`);
+            const winRateSpan = document.getElementById(`win-rate-${tabId}`);
+            const form = document.getElementById(`form-${tabId}`);
+            const pairInput = document.getElementById(`pair-${tabId}`);
+            const positionSelect = document.getElementById(`position-${tabId}`);
+            const pnlInput = document.getElementById(`pnl-${tabId}`);
 
-        // Update semua statistik
-        function updateStats() {
-            const total = trades.length;
-            const wins = trades.filter(t => t.status === 'win').length;
-            const losses = trades.filter(t => t.status === 'loss').length;
-            const winRate = total ? (wins / total * 100) : 0;
+            let trades = [];
+            const tradesCollection = collection(db, collectionName);
 
-            const profit = trades.reduce((acc, t) => acc + (t.pnl > 0 ? t.pnl : 0), 0);
-            const loss = trades.reduce((acc, t) => acc + (t.pnl < 0 ? t.pnl : 0), 0); // negatif
-            const net = profit + loss; // loss sudah negatif
+            // Update statistik
+            function updateStats() {
+                const total = trades.length;
+                const wins = trades.filter(t => t.status === 'win').length;
+                const losses = trades.filter(t => t.status === 'loss').length;
+                const winRate = total ? (wins / total * 100) : 0;
 
-            winCountSpan.textContent = wins;
-            lossCountSpan.textContent = losses;
-            profitAmountSpan.textContent = `+${formatNumber(profit)}`;
-            lossAmountSpan.textContent = formatNumber(loss); // sudah negatif
-            totalTradesSpan.textContent = total;
-            netPnlSpan.innerHTML = net >= 0 ? `+${formatNumber(net)}` : formatNumber(net);
-            winRateSpan.textContent = `${winRate.toFixed(2)}%`;
-        }
+                const profit = trades.reduce((acc, t) => acc + (t.pnl > 0 ? t.pnl : 0), 0);
+                const loss = trades.reduce((acc, t) => acc + (t.pnl < 0 ? t.pnl : 0), 0);
+                const net = profit + loss;
 
-        // Render tabel
-        function renderTrades() {
-            if (!tableBody) return;
-            tableBody.innerHTML = '';
-            trades.forEach((trade, index) => {
-                const row = document.createElement('tr');
-                row.className = 'border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800';
+                winCountSpan.textContent = wins;
+                lossCountSpan.textContent = losses;
+                profitAmountSpan.textContent = `+${formatNumber(profit)}`;
+                lossAmountSpan.textContent = formatNumber(loss);
+                totalTradesSpan.textContent = total;
+                netPnlSpan.innerHTML = net >= 0 ? `+${formatNumber(net)}` : formatNumber(net);
+                winRateSpan.textContent = `${winRate.toFixed(2)}%`;
+            }
 
-                // #
-                const tdNo = document.createElement('td');
-                tdNo.className = 'py-3 px-3 text-gray-500 dark:text-gray-400';
-                tdNo.textContent = index + 1;
-                row.appendChild(tdNo);
+            function renderTrades() {
+                if (!tableBody) return;
+                tableBody.innerHTML = '';
+                trades.forEach((trade, index) => {
+                    const row = document.createElement('tr');
+                    row.className = 'border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800';
 
-                // PAIR
-                const tdPair = document.createElement('td');
-                tdPair.className = 'py-3 px-3 font-medium dark:text-gray-200';
-                tdPair.textContent = trade.pair || '-';
-                row.appendChild(tdPair);
+                    // #
+                    const tdNo = document.createElement('td');
+                    tdNo.className = 'py-3 px-3 text-gray-500 dark:text-gray-400';
+                    tdNo.textContent = index + 1;
+                    row.appendChild(tdNo);
 
-                // POSITION
-                const tdPos = document.createElement('td');
-                tdPos.className = 'py-3 px-3 dark:text-gray-300';
-                tdPos.textContent = trade.position || '-';
-                row.appendChild(tdPos);
+                    // PAIR
+                    const tdPair = document.createElement('td');
+                    tdPair.className = 'py-3 px-3 font-medium dark:text-gray-200';
+                    tdPair.textContent = trade.pair || '-';
+                    row.appendChild(tdPair);
 
-                // PNL
-                const tdPnl = document.createElement('td');
-                tdPnl.className = 'py-3 px-3 font-mono';
-                const pnlValue = trade.pnl;
-                if (pnlValue > 0) {
-                    tdPnl.innerHTML = `<span class="text-green-600 dark:text-green-400 font-bold">+${pnlValue}</span>`;
-                } else if (pnlValue < 0) {
-                    tdPnl.innerHTML = `<span class="text-red-600 dark:text-red-400 font-bold">${pnlValue}</span>`;
-                } else {
-                    tdPnl.textContent = pnlValue ?? '-';
-                }
-                row.appendChild(tdPnl);
+                    // POSITION
+                    const tdPos = document.createElement('td');
+                    tdPos.className = 'py-3 px-3 dark:text-gray-300';
+                    tdPos.textContent = trade.position || '-';
+                    row.appendChild(tdPos);
 
-                const tdStatus = document.createElement('td');
-                tdStatus.className = 'py-3 px-3';
-                let statusBadge = '';
-                if (trade.status === 'win') {
-                    statusBadge = '<span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-3 py-1 rounded-full text-xs font-semibold">WIN</span>';
-                } else if (trade.status === 'loss') {
-                    statusBadge = '<span class="bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 px-3 py-1 rounded-full text-xs font-semibold">LOSS</span>';
-                } else {
-                    statusBadge = '<span class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-3 py-1 rounded-full text-xs font-semibold">PENDING</span>';
-                }
-                tdStatus.innerHTML = statusBadge;
-                row.appendChild(tdStatus);
-
-                const tdActions = document.createElement('td');
-                tdActions.className = 'py-3 px-3';
-                const deleteBtn = document.createElement('button');
-                deleteBtn.innerHTML = '🗑️';
-                deleteBtn.className = 'text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 text-lg';
-                deleteBtn.title = 'Hapus trade';
-                deleteBtn.onclick = async () => {
-                    if (confirm('Hapus trade ini?')) {
-                        try {
-                            await deleteDoc(doc(db, 'stev_trades_v3', trade.id));
-                        } catch (error) {
-                            console.error('Error deleting: ', error);
-                            alert('Gagal menghapus');
-                        }
+                    // PNL
+                    const tdPnl = document.createElement('td');
+                    tdPnl.className = 'py-3 px-3 font-mono';
+                    const pnlValue = trade.pnl;
+                    if (pnlValue > 0) {
+                        tdPnl.innerHTML = `<span class="text-green-600 dark:text-green-400 font-bold">+${pnlValue}</span>`;
+                    } else if (pnlValue < 0) {
+                        tdPnl.innerHTML = `<span class="text-red-600 dark:text-red-400 font-bold">${pnlValue}</span>`;
+                    } else {
+                        tdPnl.textContent = pnlValue ?? '-';
                     }
-                };
-                tdActions.appendChild(deleteBtn);
-                row.appendChild(tdActions);
+                    row.appendChild(tdPnl);
 
-                tableBody.appendChild(row);
+                    // STATUS
+                    const tdStatus = document.createElement('td');
+                    tdStatus.className = 'py-3 px-3';
+                    let statusBadge = '';
+                    if (trade.status === 'win') {
+                        statusBadge = '<span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-3 py-1 rounded-full text-xs font-semibold">WIN</span>';
+                    } else if (trade.status === 'loss') {
+                        statusBadge = '<span class="bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 px-3 py-1 rounded-full text-xs font-semibold">LOSS</span>';
+                    } else {
+                        statusBadge = '<span class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-3 py-1 rounded-full text-xs font-semibold">PENDING</span>';
+                    }
+                    tdStatus.innerHTML = statusBadge;
+                    row.appendChild(tdStatus);
+
+                    // AKSI (hapus)
+                    const tdActions = document.createElement('td');
+                    tdActions.className = 'py-3 px-3';
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.innerHTML = '🗑️';
+                    deleteBtn.className = 'text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 text-lg';
+                    deleteBtn.title = 'Hapus trade';
+                    deleteBtn.onclick = async () => {
+                        if (confirm('Hapus trade ini?')) {
+                            try {
+                                await deleteDoc(doc(db, collectionName, trade.id));
+                            } catch (error) {
+                                console.error('Error deleting: ', error);
+                                alert('Gagal menghapus');
+                            }
+                        }
+                    };
+                    tdActions.appendChild(deleteBtn);
+                    row.appendChild(tdActions);
+
+                    tableBody.appendChild(row);
+                });
+                updateStats();
+            }
+
+            // Listener realtime
+            const q = query(tradesCollection, orderBy('timestamp', 'desc'));
+            onSnapshot(q, (snapshot) => {
+                trades = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderTrades();
+            }, (error) => {
+                console.error(`Snapshot error (${collectionName}): `, error);
+                alert(`Gagal memuat data dari ${collectionName}. Periksa Firebase.`);
             });
-            updateStats();
+
+            // Form submit
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const pair = pairInput.value.trim().toUpperCase();
+                const position = positionSelect.value;
+                const pnl = parseFloat(pnlInput.value);
+
+                if (!pair || !position || isNaN(pnl)) {
+                    alert('Isi semua field dengan benar (PNL harus angka)');
+                    return;
+                }
+
+                let status = 'pending';
+                if (pnl > 0) status = 'win';
+                else if (pnl < 0) status = 'loss';
+
+                try {
+                    await addDoc(tradesCollection, {
+                        pair,
+                        position,
+                        pnl,
+                        status,
+                        timestamp: new Date().toISOString()
+                    });
+                    form.reset();
+                    pairInput.focus();
+                } catch (error) {
+                    console.error('Error adding: ', error);
+                    alert('Gagal menambah trade');
+                }
+            });
         }
 
-        // Listener realtime Firestore
-        const q = query(tradesCollection, orderBy('timestamp', 'desc'));
-        onSnapshot(q, (snapshot) => {
-            trades = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            renderTrades();
-        }, (error) => {
-            console.error('Snapshot error: ', error);
-            alert('Gagal memuat data. Periksa konfigurasi Firebase dan aturan Firestore.');
+        setupTab('1', 'stev_trades_v3');
+        setupTab('2', 'stev_trades_v4');
+
+        const tabButtons = document.querySelectorAll('.tab-btn');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        function switchTab(tabId) {
+            tabContents.forEach(content => {
+                content.classList.remove('active');
+            });
+            tabButtons.forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+            document.querySelector(`.tab-btn[data-tab="${tabId}"]`).classList.add('active');
+        }
+
+        tabButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tabId = btn.getAttribute('data-tab');
+                switchTab(tabId);
+            });
         });
 
-        // FORM TAMBAH TRADE (3 field)
-        document.getElementById('add-trade-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const form = e.target;
-            const pair = form.pair.value.trim().toUpperCase();
-            const position = form.position.value;
-            const pnl = parseFloat(form.pnl.value);
-
-            if (!pair || !position || isNaN(pnl)) {
-                alert('Isi semua field dengan benar (PNL harus angka)');
-                return;
-            }
-
-            let status = 'pending';
-            if (pnl > 0) status = 'win';
-            else if (pnl < 0) status = 'loss';
-
-            try {
-                await addDoc(tradesCollection, {
-                    pair,
-                    position,
-                    pnl,
-                    status,
-                    timestamp: new Date().toISOString()
-                });
-                form.reset();
-                form.pair.focus();
-            } catch (error) {
-                console.error('Error adding: ', error);
-                alert('Gagal menambah trade');
-            }
-        });
+        // Aktifkan tab pertama
+        switchTab('1');
     </script>
 
     <style>
@@ -224,15 +256,50 @@
             padding: 24px;
             transition: background-color 0.3s, color 0.3s;
         }
-        /* Dark mode variables */
         body.dark {
             background: #111827;
             color: #e5e7eb;
         }
         .dashboard {
-            max-width: 1100px;
+            max-width: 1200px;
             margin: 0 auto;
         }
+        /* Tab navigation */
+        .tab-nav {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            padding: 12px 28px;
+            border: none;
+            background: #e2e8f0;
+            color: #1e293b;
+            font-weight: 600;
+            border-radius: 40px;
+            cursor: pointer;
+            transition: 0.2s;
+            font-size: 1rem;
+        }
+        body.dark .tab-btn {
+            background: #2d3748;
+            color: #e5e7eb;
+        }
+        .tab-btn.active {
+            background: #0f172a;
+            color: white;
+        }
+        body.dark .tab-btn.active {
+            background: #3b82f6;
+            color: white;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        /* Card */
         .card {
             background: white;
             border-radius: 32px;
@@ -247,7 +314,7 @@
             box-shadow: 0 20px 35px -10px rgba(0,0,0,0.5);
         }
         .header-title {
-            font-size: 2.2rem;
+            font-size: 2rem;
             font-weight: 700;
             background: linear-gradient(145deg, #0b1120, #1e293b);
             -webkit-background-clip: text;
@@ -258,6 +325,34 @@
             background: linear-gradient(145deg, #e2e8f0, #94a3b8);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+        }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        #theme-toggle {
+            background: none;
+            border: none;
+            font-size: 2rem;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+            transition: transform 0.2s;
+        }
+        #theme-toggle:hover {
+            transform: scale(1.1);
+        }
+        .timestamp {
+            background: #dbeafe;
+            padding: 8px 20px;
+            border-radius: 40px;
+            font-size:0.9rem;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        body.dark .timestamp {
+            background: #1e3a8a;
+            color: #bfdbfe;
         }
         .stats-modern {
             background: #f8fafc;
@@ -467,143 +562,203 @@
             background: #374151;
             color: #e5e7eb;
         }
-        .header-right {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        #theme-toggle {
-            background: none;
-            border: none;
-            font-size: 2rem;
-            cursor: pointer;
-            padding: 0;
-            line-height: 1;
-            transition: transform 0.2s;
-        }
-        #theme-toggle:hover {
-            transform: scale(1.1);
-        }
-        .timestamp {
-            background: #dbeafe;
-            padding: 8px 20px;
-            border-radius: 40px;
-            font-size:0.9rem;
-            transition: background-color 0.3s, color 0.3s;
-        }
-        body.dark .timestamp {
-            background: #1e3a8a;
-            color: #bfdbfe;
-        }
     </style>
 </head>
 <body>
 <div class="dashboard">
-    <div class="card">
-        <!-- Header dengan tombol dark mode dan timestamp (tanpa info badge) -->
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
-            <div>
-                <div class="header-title"> Dashboard Future</div>
-                <!-- info badge telah dihapus -->
-            </div>
-            <div class="header-right">
-                <button id="theme-toggle" title="Ganti tema">🌙</button>
-                <div class="timestamp">
-                    🕒 <span id="last-updated"></span>
-                </div>
-            </div>
+    <!-- Header global (judul, theme toggle, timestamp) -->
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 24px;">
+        <div>
+            <div class="header-title">Future Dashboard</div>
         </div>
-
-        <!-- Panel statistik modern (WIN, LOSS, PROFIT, LOSS, Total Trades, Net P&L, Win Rate) -->
-        <div class="stats-modern">
-            <div class="stats-left">
-                <div class="stat-block">
-                    <span class="label">WIN</span>
-                    <span class="value" id="win-count">0</span>
-                </div>
-                <div class="stat-block">
-                    <span class="label">LOSS</span>
-                    <span class="value" id="loss-count">0</span>
-                </div>
-                <div class="stat-block">
-                    <span class="label">PROFIT</span>
-                    <span class="value profit-text" id="profit-amount">+0.00</span>
-                </div>
-                <div class="stat-block">
-                    <span class="label">LOSS</span>
-                    <span class="value loss-text" id="loss-amount">0.00</span>
-                </div>
+        <div class="header-right">
+            <button id="theme-toggle" title="Ganti tema">🌙</button>
+            <div class="timestamp">
+                🕒 <span id="last-updated"></span>
             </div>
-            <div class="stats-right">
-                <div class="right-item">
-                    <span class="label">Total Trades</span>
-                    <span class="value" id="total-trades">0</span>
-                </div>
-                <div class="right-item">
-                    <span class="label">Net P&L</span>
-                    <span class="value" id="net-pnl">+0.00</span>
-                </div>
-                <div class="right-item">
-                    <span class="label">Win Rate</span>
-                    <span class="value" id="win-rate">0%</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tabel Log -->
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>PAIR</th>
-                        <th>POSITION</th>
-                        <th>PNL</th>
-                        <th>STATUS</th>
-                        <th>AKSI</th>
-                    </tr>
-                </thead>
-                <tbody id="trade-table-body">
-                    <tr><td colspan="6" style="text-align:center; padding:40px;">Memuat data dari Firebase...</td></tr>
-                </tbody>
-            </table>
-        </div>
-
-        <div class="form-add">
-            <h3 style="margin:0 0 16px 0; font-weight:600; display: flex; align-items: center; gap:10px;">
-                <span>ADD Transaction<pan>
-            </h3>
-            <form id="add-trade-form">
-                <div class="form-row">
-                    <div class="field">
-                        <label>PAIR</label>
-                        <input type="text" name="pair" placeholder="ETH/USDT" required>
-                    </div>
-                    <div class="field">
-                        <label>POSITION</label>
-                        <select name="position" required>
-                            <option value="Long">Long</option>
-                            <option value="Short">Short</option>
-                        </select>
-                    </div>
-                    <div class="field">
-                        <label>PNL (contoh: +10 / -5.5)</label>
-                        <input type="number" step="any" name="pnl" placeholder="+20" required>
-                    </div>
-                </div>
-                <button type="submit" class="btn-primary">Save</button>
-            </form>
-            <p style="font-size:0.75rem; color:#64748b; margin-top:16px;">
-            </p>
-        </div>
-
-        <!-- Footer powered by Stev -->
-        <div class="footer">
-            <span>⚡ powered by Stev</span>
         </div>
     </div>
-</div>
 
+    <!-- Navigasi Tab -->
+    <div class="tab-nav">
+        <button class="tab-btn" data-tab="1">VIP</button>
+        <button class="tab-btn" data-tab="2">VVIP</button>
+    </div>
+
+    <!-- Tab 1 -->
+    <div id="tab-1" class="tab-content">
+        <div class="card">
+            <!-- Panel statistik Tab 1 -->
+            <div class="stats-modern">
+                <div class="stats-left">
+                    <div class="stat-block">
+                        <span class="label">WIN</span>
+                        <span class="value" id="win-count-1">0</span>
+                    </div>
+                    <div class="stat-block">
+                        <span class="label">LOSS</span>
+                        <span class="value" id="loss-count-1">0</span>
+                    </div>
+                    <div class="stat-block">
+                        <span class="label">PROFIT</span>
+                        <span class="value profit-text" id="profit-amount-1">+0.00</span>
+                    </div>
+                    <div class="stat-block">
+                        <span class="label">LOSS</span>
+                        <span class="value loss-text" id="loss-amount-1">0.00</span>
+                    </div>
+                </div>
+                <div class="stats-right">
+                    <div class="right-item">
+                        <span class="label">Total Trades</span>
+                        <span class="value" id="total-trades-1">0</span>
+                    </div>
+                    <div class="right-item">
+                        <span class="label">Net P&L</span>
+                        <span class="value" id="net-pnl-1">+0.00</span>
+                    </div>
+                    <div class="right-item">
+                        <span class="label">Win Rate</span>
+                        <span class="value" id="win-rate-1">0%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabel Tab 1 -->
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>PAIR</th>
+                            <th>POSITION</th>
+                            <th>PNL</th>
+                            <th>STATUS</th>
+                            <th>AKSI</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body-1">
+                        <tr><td colspan="6" style="text-align:center; padding:40px;">Memuat data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Form Tab 1 -->
+            <div class="form-add">
+                <h3 style="margin:0 0 16px 0; font-weight:600;">➕ ADD Transaction (Tab 1)</h3>
+                <form id="form-1">
+                    <div class="form-row">
+                        <div class="field">
+                            <label>PAIR</label>
+                            <input type="text" id="pair-1" placeholder="ETH/USDT" required>
+                        </div>
+                        <div class="field">
+                            <label>POSITION</label>
+                            <select id="position-1" required>
+                                <option value="Long">Long</option>
+                                <option value="Short">Short</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>PNL (+/-)</label>
+                            <input type="number" step="any" id="pnl-1" placeholder="+20" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn-primary">Save</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 2 -->
+    <div id="tab-2" class="tab-content">
+        <div class="card">
+            <!-- Panel statistik Tab 2 -->
+            <div class="stats-modern">
+                <div class="stats-left">
+                    <div class="stat-block">
+                        <span class="label">WIN</span>
+                        <span class="value" id="win-count-2">0</span>
+                    </div>
+                    <div class="stat-block">
+                        <span class="label">LOSS</span>
+                        <span class="value" id="loss-count-2">0</span>
+                    </div>
+                    <div class="stat-block">
+                        <span class="label">PROFIT</span>
+                        <span class="value profit-text" id="profit-amount-2">+0.00</span>
+                    </div>
+                    <div class="stat-block">
+                        <span class="label">LOSS</span>
+                        <span class="value loss-text" id="loss-amount-2">0.00</span>
+                    </div>
+                </div>
+                <div class="stats-right">
+                    <div class="right-item">
+                        <span class="label">Total Trades</span>
+                        <span class="value" id="total-trades-2">0</span>
+                    </div>
+                    <div class="right-item">
+                        <span class="label">Net P&L</span>
+                        <span class="value" id="net-pnl-2">+0.00</span>
+                    </div>
+                    <div class="right-item">
+                        <span class="label">Win Rate</span>
+                        <span class="value" id="win-rate-2">0%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabel Tab 2 -->
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>PAIR</th>
+                            <th>POSITION</th>
+                            <th>PNL</th>
+                            <th>STATUS</th>
+                            <th>AKSI</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body-2">
+                        <tr><td colspan="6" style="text-align:center; padding:40px;">Memuat data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Form Tab 2 -->
+            <div class="form-add">
+                <h3 style="margin:0 0 16px 0; font-weight:600;">➕ ADD Transaction (Tab 2)</h3>
+                <form id="form-2">
+                    <div class="form-row">
+                        <div class="field">
+                            <label>PAIR</label>
+                            <input type="text" id="pair-2" placeholder="BTC/USDT" required>
+                        </div>
+                        <div class="field">
+                            <label>POSITION</label>
+                            <select id="position-2" required>
+                                <option value="Long">Long</option>
+                                <option value="Short">Short</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>PNL (+/-)</label>
+                            <input type="number" step="any" id="pnl-2" placeholder="-5.5" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn-primary">Save</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer global -->
+    <div class="footer">
+        <span>⚡ powered by Stev</span>
+    </div>
 </div>
 </body>
 </html>
