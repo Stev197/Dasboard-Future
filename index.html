@@ -48,6 +48,13 @@
             return num.toFixed(decimals).replace(/\d(?=(\d{3})+\.)/g, '$&,');
         }
 
+        function formatCurrency(value) {
+            if (value === 0) return '$0.00';
+            const absValue = Math.abs(value);
+            const formatted = absValue.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+            return (value > 0 ? '+' : '-') + '$' + formatted;
+        }
+
         const lastUpdatedSpan = document.getElementById('last-updated');
         function updateLastUpdated() {
             const now = new Date();
@@ -87,10 +94,10 @@
 
                 winCountSpan.textContent = wins;
                 lossCountSpan.textContent = losses;
-                profitAmountSpan.textContent = `+${formatNumber(profit)}`;
-                lossAmountSpan.textContent = formatNumber(loss);
+                profitAmountSpan.textContent = formatCurrency(profit);
+                lossAmountSpan.textContent = formatCurrency(loss);
                 totalTradesSpan.textContent = total;
-                netPnlSpan.innerHTML = net >= 0 ? `+${formatNumber(net)}` : formatNumber(net);
+                netPnlSpan.innerHTML = formatCurrency(net);
                 winRateSpan.textContent = `${winRate.toFixed(2)}%`;
             }
 
@@ -120,11 +127,11 @@
                     tdPnl.className = 'py-3 px-3 font-mono';
                     const pnlValue = trade.pnl;
                     if (pnlValue > 0) {
-                        tdPnl.innerHTML = `<span class="text-green-600 dark:text-green-400 font-bold">+${pnlValue}</span>`;
+                        tdPnl.innerHTML = `<span class="text-green-600 dark:text-green-400 font-bold">${formatCurrency(pnlValue)}</span>`;
                     } else if (pnlValue < 0) {
-                        tdPnl.innerHTML = `<span class="text-red-600 dark:text-red-400 font-bold">${pnlValue}</span>`;
+                        tdPnl.innerHTML = `<span class="text-red-600 dark:text-red-400 font-bold">${formatCurrency(pnlValue)}</span>`;
                     } else {
-                        tdPnl.textContent = pnlValue ?? '-';
+                        tdPnl.textContent = formatCurrency(0);
                     }
                     row.appendChild(tdPnl);
 
@@ -272,15 +279,15 @@
 
             document.getElementById('vip-win').textContent = vipStats.wins;
             document.getElementById('vip-loss').textContent = vipStats.losses;
-            document.getElementById('vip-pnl').textContent = formatNumber(vipStats.netPnl);
+            document.getElementById('vip-pnl').textContent = formatCurrency(vipStats.netPnl);
 
             document.getElementById('vvip-win').textContent = vvipStats.wins;
             document.getElementById('vvip-loss').textContent = vvipStats.losses;
-            document.getElementById('vvip-pnl').textContent = formatNumber(vvipStats.netPnl);
+            document.getElementById('vvip-pnl').textContent = formatCurrency(vvipStats.netPnl);
 
             document.getElementById('pc-win').textContent = pcStats.wins;
             document.getElementById('pc-loss').textContent = pcStats.losses;
-            document.getElementById('pc-pnl').textContent = formatNumber(pcStats.netPnl);
+            document.getElementById('pc-pnl').textContent = formatCurrency(pcStats.netPnl);
 
             const totalTrades = vipStats.total + vvipStats.total + pcStats.total;
             const totalWins = vipStats.wins + vvipStats.wins + pcStats.wins;
@@ -294,7 +301,7 @@
             document.getElementById('total-win-all').textContent = totalWins;
             document.getElementById('total-loss-all').textContent = totalLosses;
             document.getElementById('win-rate-all').textContent = winRate.toFixed(2) + '%';
-            document.getElementById('net-pnl-all').innerHTML = netPnl >= 0 ? `+${formatNumber(netPnl)}` : formatNumber(netPnl);
+            document.getElementById('net-pnl-all').innerHTML = formatCurrency(netPnl);
 
             // Update chart
             const ctx = document.getElementById('pnlChart')?.getContext('2d');
@@ -333,7 +340,12 @@
                                     callbacks: {
                                         label: (context) => {
                                             let label = context.dataset.label || '';
-                                            label += ': ' + formatNumber(context.raw);
+                                            const rawValue = context.raw;
+                                            if (context.dataset.label === 'Total Loss') {
+                                                label += ': ' + formatCurrency(-rawValue);
+                                            } else {
+                                                label += ': ' + formatCurrency(rawValue);
+                                            }
                                             return label;
                                         }
                                     }
@@ -342,7 +354,7 @@
                             scales: {
                                 y: {
                                     beginAtZero: true,
-                                    ticks: { callback: (value) => formatNumber(value) }
+                                    ticks: { callback: (value) => formatCurrency(value) }
                                 }
                             }
                         }
@@ -723,12 +735,12 @@
                 <div class="stats-left">
                     <div class="stat-block"><span class="label">WIN</span><span class="value" id="win-count-1">0</span></div>
                     <div class="stat-block"><span class="label">LOSS</span><span class="value" id="loss-count-1">0</span></div>
-                    <div class="stat-block"><span class="label">PROFIT</span><span class="value profit-text" id="profit-amount-1">+0.00</span></div>
-                    <div class="stat-block"><span class="label">LOSS</span><span class="value loss-text" id="loss-amount-1">0.00</span></div>
+                    <div class="stat-block"><span class="label">PROFIT</span><span class="value profit-text" id="profit-amount-1">+$0.00</span></div>
+                    <div class="stat-block"><span class="label">LOSS</span><span class="value loss-text" id="loss-amount-1">$0.00</span></div>
                 </div>
                 <div class="stats-right">
                     <div class="right-item"><span class="label">Total Trades</span><span class="value" id="total-trades-1">0</span></div>
-                    <div class="right-item"><span class="label">Net P&L</span><span class="value" id="net-pnl-1">+0.00</span></div>
+                    <div class="right-item"><span class="label">Net P&L</span><span class="value" id="net-pnl-1">$0.00</span></div>
                     <div class="right-item"><span class="label">Win Rate</span><span class="value" id="win-rate-1">0%</span></div>
                 </div>
             </div>
@@ -755,12 +767,12 @@
                 <div class="stats-left">
                     <div class="stat-block"><span class="label">WIN</span><span class="value" id="win-count-2">0</span></div>
                     <div class="stat-block"><span class="label">LOSS</span><span class="value" id="loss-count-2">0</span></div>
-                    <div class="stat-block"><span class="label">PROFIT</span><span class="value profit-text" id="profit-amount-2">+0.00</span></div>
-                    <div class="stat-block"><span class="label">LOSS</span><span class="value loss-text" id="loss-amount-2">0.00</span></div>
+                    <div class="stat-block"><span class="label">PROFIT</span><span class="value profit-text" id="profit-amount-2">+$0.00</span></div>
+                    <div class="stat-block"><span class="label">LOSS</span><span class="value loss-text" id="loss-amount-2">$0.00</span></div>
                 </div>
                 <div class="stats-right">
                     <div class="right-item"><span class="label">Total Trades</span><span class="value" id="total-trades-2">0</span></div>
-                    <div class="right-item"><span class="label">Net P&L</span><span class="value" id="net-pnl-2">+0.00</span></div>
+                    <div class="right-item"><span class="label">Net P&L</span><span class="value" id="net-pnl-2">$0.00</span></div>
                     <div class="right-item"><span class="label">Win Rate</span><span class="value" id="win-rate-2">0%</span></div>
                 </div>
             </div>
@@ -787,12 +799,12 @@
                 <div class="stats-left">
                     <div class="stat-block"><span class="label">WIN</span><span class="value" id="win-count-3">0</span></div>
                     <div class="stat-block"><span class="label">LOSS</span><span class="value" id="loss-count-3">0</span></div>
-                    <div class="stat-block"><span class="label">PROFIT</span><span class="value profit-text" id="profit-amount-3">+0.00</span></div>
-                    <div class="stat-block"><span class="label">LOSS</span><span class="value loss-text" id="loss-amount-3">0.00</span></div>
+                    <div class="stat-block"><span class="label">PROFIT</span><span class="value profit-text" id="profit-amount-3">+$0.00</span></div>
+                    <div class="stat-block"><span class="label">LOSS</span><span class="value loss-text" id="loss-amount-3">$0.00</span></div>
                 </div>
                 <div class="stats-right">
                     <div class="right-item"><span class="label">Total Trades</span><span class="value" id="total-trades-3">0</span></div>
-                    <div class="right-item"><span class="label">Net P&L</span><span class="value" id="net-pnl-3">+0.00</span></div>
+                    <div class="right-item"><span class="label">Net P&L</span><span class="value" id="net-pnl-3">$0.00</span></div>
                     <div class="right-item"><span class="label">Win Rate</span><span class="value" id="win-rate-3">0%</span></div>
                 </div>
             </div>
@@ -821,7 +833,7 @@
                 <div class="stat-block"><span class="label">Total Win</span><span class="value profit-text" id="total-win-all">0</span></div>
                 <div class="stat-block"><span class="label">Total Loss</span><span class="value loss-text" id="total-loss-all">0</span></div>
                 <div class="stat-block"><span class="label">Win Rate</span><span class="value" id="win-rate-all">0%</span></div>
-                <div class="stat-block"><span class="label">Net P&L</span><span class="value" id="net-pnl-all">+0.00</span></div>
+                <div class="stat-block"><span class="label">Net P&L</span><span class="value" id="net-pnl-all">$0.00</span></div>
             </div>
 
             <div style="margin-top:20px; background:var(--card-bg); padding:20px; border-radius:24px;">
@@ -834,19 +846,19 @@
                     <h3>VIP</h3>
                     <p>✅ Win: <span id="vip-win">0</span></p>
                     <p>❌ Loss: <span id="vip-loss">0</span></p>
-                    <p>💰 Total P&L: <span id="vip-pnl">0.00</span></p>
+                    <p>💰 Total P&L: <span id="vip-pnl">$0.00</span></p>
                 </div>
                 <div class="kategori-card">
                     <h3>VVIP</h3>
                     <p>✅ Win: <span id="vvip-win">0</span></p>
                     <p>❌ Loss: <span id="vvip-loss">0</span></p>
-                    <p>💰 Total P&L: <span id="vvip-pnl">0.00</span></p>
+                    <p>💰 Total P&L: <span id="vvip-pnl">$0.00</span></p>
                 </div>
                 <div class="kategori-card">
                     <h3>Personal Calls</h3>
                     <p>✅ Win: <span id="pc-win">0</span></p>
                     <p>❌ Loss: <span id="pc-loss">0</span></p>
-                    <p>💰 Total P&L: <span id="pc-pnl">0.00</span></p>
+                    <p>💰 Total P&L: <span id="pc-pnl">$0.00</span></p>
                 </div>
             </div>
         </div>
