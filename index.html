@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dasboard Future</title>
+    <title>Dashboard Future </title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
         import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
@@ -57,7 +58,6 @@
         updateLastUpdated();
         setInterval(updateLastUpdated, 1000);
 
-        // ================== FUNGSI SETUP TAB ==================
         function setupTab(tabId, collectionName) {
             const tableBody = document.getElementById(`table-body-${tabId}`);
             const winCountSpan = document.getElementById(`win-count-${tabId}`);
@@ -210,7 +210,6 @@
         setupTab('2', 'stev_trades_v4');
         setupTab('3', 'stev_trades_v5'); 
 
-        // ================== TAB NAVIGATION ==================
         const tabButtons = document.querySelectorAll('.tab-btn');
         const tabContents = document.querySelectorAll('.tab-content');
 
@@ -229,6 +228,133 @@
         });
 
         switchTab('1');
+
+        let vipTrades = [];
+        let vvipTrades = [];
+        let pcTrades = [];
+        let pnlChart = null;
+
+        onSnapshot(query(collection(db, 'stev_trades_v3'), orderBy('timestamp', 'desc')), (snapshot) => {
+            vipTrades = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            updateDashboardAll();
+        }, (error) => console.error('VIP snapshot error:', error));
+
+        onSnapshot(query(collection(db, 'stev_trades_v4'), orderBy('timestamp', 'desc')), (snapshot) => {
+            vvipTrades = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            updateDashboardAll();
+        }, (error) => console.error('VVIP snapshot error:', error));
+
+        onSnapshot(query(collection(db, 'stev_trades_v5'), orderBy('timestamp', 'desc')), (snapshot) => {
+            pcTrades = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            updateDashboardAll();
+        }, (error) => console.error('PC snapshot error:', error));
+
+        function calculateStats(trades) {
+            let wins = 0, losses = 0, profit = 0, loss = 0;
+            trades.forEach(t => {
+                if (t.status === 'win') {
+                    wins++;
+                    profit += t.pnl;
+                } else if (t.status === 'loss') {
+                    losses++;
+                    loss += t.pnl; // loss bernilai negatif
+                }
+            });
+            const total = trades.length;
+            const netPnl = profit + loss;
+            return { wins, losses, profit, loss, netPnl, total };
+        }
+
+        function updateDashboardAll() {
+            const vipStats = calculateStats(vipTrades);
+            const vvipStats = calculateStats(vvipTrades);
+            const pcStats = calculateStats(pcTrades);
+
+            document.getElementById('vip-win').textContent = vipStats.wins;
+            document.getElementById('vip-loss').textContent = vipStats.losses;
+            document.getElementById('vip-pnl').textContent = formatNumber(vipStats.netPnl);
+
+            document.getElementById('vvip-win').textContent = vvipStats.wins;
+            document.getElementById('vvip-loss').textContent = vvipStats.losses;
+            document.getElementById('vvip-pnl').textContent = formatNumber(vvipStats.netPnl);
+
+            document.getElementById('pc-win').textContent = pcStats.wins;
+            document.getElementById('pc-loss').textContent = pcStats.losses;
+            document.getElementById('pc-pnl').textContent = formatNumber(pcStats.netPnl);
+
+            const totalTrades = vipStats.total + vvipStats.total + pcStats.total;
+            const totalWins = vipStats.wins + vvipStats.wins + pcStats.wins;
+            const totalLosses = vipStats.losses + vvipStats.losses + pcStats.losses;
+            const totalProfit = vipStats.profit + vvipStats.profit + pcStats.profit;
+            const totalLoss = vipStats.loss + vvipStats.loss + pcStats.loss;
+            const netPnl = totalProfit + totalLoss;
+            const winRate = totalTrades ? (totalWins / totalTrades * 100) : 0;
+
+            document.getElementById('total-trades-all').textContent = totalTrades;
+            document.getElementById('total-win-all').textContent = totalWins;
+            document.getElementById('total-loss-all').textContent = totalLosses;
+            document.getElementById('win-rate-all').textContent = winRate.toFixed(2) + '%';
+            document.getElementById('net-pnl-all').innerHTML = netPnl >= 0 ? `+${formatNumber(netPnl)}` : formatNumber(netPnl);
+
+            // Update chart
+            const ctx = document.getElementById('pnlChart')?.getContext('2d');
+            if (ctx) {
+                if (!pnlChart) {
+                    // Inisialisasi chart
+                    pnlChart = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: ['VIP', 'VVIP', 'Personal Calls'],
+                            datasets: [
+                                {
+                                    label: 'Total Profit',
+                                    data: [vipStats.profit, vvipStats.profit, pcStats.profit],
+                                    backgroundColor: 'rgba(75, 192, 192, 0.7)',
+                                    borderColor: 'rgba(75, 192, 192, 1)',
+                                    borderWidth: 1,
+                                    borderRadius: 8
+                                },
+                                {
+                                    label: 'Total Loss',
+                                    data: [Math.abs(vipStats.loss), Math.abs(vvipStats.loss), Math.abs(pcStats.loss)],
+                                    backgroundColor: 'rgba(255, 99, 132, 0.7)',
+                                    borderColor: 'rgba(255, 99, 132, 1)',
+                                    borderWidth: 1,
+                                    borderRadius: 8
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'top' },
+                                tooltip: {
+                                    callbacks: {
+                                        label: (context) => {
+                                            let label = context.dataset.label || '';
+                                            label += ': ' + formatNumber(context.raw);
+                                            return label;
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: { callback: (value) => formatNumber(value) }
+                                }
+                            }
+                        }
+                    });
+                } else {
+                    // Update data chart
+                    pnlChart.data.datasets[0].data = [vipStats.profit, vvipStats.profit, pcStats.profit];
+                    pnlChart.data.datasets[1].data = [Math.abs(vipStats.loss), Math.abs(vvipStats.loss), Math.abs(pcStats.loss)];
+                    pnlChart.update();
+                }
+            }
+        }
     </script>
 
     <style>
@@ -251,6 +377,7 @@
             display: flex;
             gap: 12px;
             margin-bottom: 20px;
+            flex-wrap: wrap;
         }
         .tab-btn {
             padding: 12px 28px;
@@ -406,12 +533,11 @@
             font-weight: 700;
             font-size: 1.4rem;
         }
-        /* FORM DI ATAS TABEL */
         .form-add {
             background: #f1f5f9;
             border-radius: 32px;
             padding: 24px;
-            margin-bottom: 24px;   /* jarak dengan tabel */
+            margin-bottom: 24px;
             transition: background-color 0.3s;
         }
         body.dark .form-add {
@@ -544,14 +670,37 @@
             background: #374151;
             color: #e5e7eb;
         }
+
+        #pnlChart {
+            max-height: 400px;
+            width: 100%;
+        }
+        .kategori-card {
+            background: #f9fafb;
+            border-radius: 24px;
+            padding: 20px;
+            flex: 1 1 200px;
+            transition: background-color 0.3s;
+        }
+        body.dark .kategori-card {
+            background: #2d3748;
+        }
+        .kategori-card h3 {
+            margin-bottom: 12px;
+            font-size: 1.3rem;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 8px;
+        }
+        body.dark .kategori-card h3 {
+            border-bottom-color: #4b5563;
+        }
     </style>
 </head>
 <body>
 <div class="dashboard">
-    <!-- Header global -->
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 24px;">
         <div>
-            <div class="header-title">Dasboard Future</div>
+            <div class="header-title">Dashboard Future</div>
         </div>
         <div class="header-right">
             <button id="theme-toggle" title="Ganti tema">🌙</button>
@@ -564,263 +713,148 @@
     <div class="tab-nav">
         <button class="tab-btn" data-tab="1">VIP</button>
         <button class="tab-btn" data-tab="2">VVIP</button>
-        <button class="tab-btn" data-tab="3">Pesonal Calls</button> <!-- Tab baru -->
+        <button class="tab-btn" data-tab="3">Personal Calls</button>
+        <button class="tab-btn" data-tab="4">Dashboard All</button>
     </div>
 
-    <!-- Tab 1 -->
     <div id="tab-1" class="tab-content">
         <div class="card">
-            <!-- Panel statistik Tab 1 -->
             <div class="stats-modern">
                 <div class="stats-left">
-                    <div class="stat-block">
-                        <span class="label">WIN</span>
-                        <span class="value" id="win-count-1">0</span>
-                    </div>
-                    <div class="stat-block">
-                        <span class="label">LOSS</span>
-                        <span class="value" id="loss-count-1">0</span>
-                    </div>
-                    <div class="stat-block">
-                        <span class="label">PROFIT</span>
-                        <span class="value profit-text" id="profit-amount-1">+0.00</span>
-                    </div>
-                    <div class="stat-block">
-                        <span class="label">LOSS</span>
-                        <span class="value loss-text" id="loss-amount-1">0.00</span>
-                    </div>
+                    <div class="stat-block"><span class="label">WIN</span><span class="value" id="win-count-1">0</span></div>
+                    <div class="stat-block"><span class="label">LOSS</span><span class="value" id="loss-count-1">0</span></div>
+                    <div class="stat-block"><span class="label">PROFIT</span><span class="value profit-text" id="profit-amount-1">+0.00</span></div>
+                    <div class="stat-block"><span class="label">LOSS</span><span class="value loss-text" id="loss-amount-1">0.00</span></div>
                 </div>
                 <div class="stats-right">
-                    <div class="right-item">
-                        <span class="label">Total Trades</span>
-                        <span class="value" id="total-trades-1">0</span>
-                    </div>
-                    <div class="right-item">
-                        <span class="label">Net P&L</span>
-                        <span class="value" id="net-pnl-1">+0.00</span>
-                    </div>
-                    <div class="right-item">
-                        <span class="label">Win Rate</span>
-                        <span class="value" id="win-rate-1">0%</span>
-                    </div>
+                    <div class="right-item"><span class="label">Total Trades</span><span class="value" id="total-trades-1">0</span></div>
+                    <div class="right-item"><span class="label">Net P&L</span><span class="value" id="net-pnl-1">+0.00</span></div>
+                    <div class="right-item"><span class="label">Win Rate</span><span class="value" id="win-rate-1">0%</span></div>
                 </div>
             </div>
-
             <div class="form-add">
                 <h3 style="margin:0 0 16px 0; font-weight:600;">ADD Transaction VIP</h3>
                 <form id="form-1">
                     <div class="form-row">
-                        <div class="field">
-                            <label>PAIR</label>
-                            <input type="text" id="pair-1" placeholder="ETH/USDT" required>
-                        </div>
-                        <div class="field">
-                            <label>POSITION</label>
-                            <select id="position-1" required>
-                                <option value="Long">Long</option>
-                                <option value="Short">Short</option>
-                            </select>
-                        </div>
-                        <div class="field">
-                            <label>PNL (+/-)</label>
-                            <input type="number" step="any" id="pnl-1" placeholder="+20" required>
-                        </div>
+                        <div class="field"><label>PAIR</label><input type="text" id="pair-1" placeholder="ETH/USDT" required></div>
+                        <div class="field"><label>POSITION</label><select id="position-1" required><option value="Long">Long</option><option value="Short">Short</option></select></div>
+                        <div class="field"><label>PNL (+/-)</label><input type="number" step="any" id="pnl-1" placeholder="+20" required></div>
                     </div>
                     <button type="submit" class="btn-primary">Save</button>
                 </form>
             </div>
-
-            <!-- Tabel Tab 1 -->
             <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>PAIR</th>
-                            <th>POSITION</th>
-                            <th>PNL</th>
-                            <th>STATUS</th>
-                            <th>AKSI</th>
-                        </tr>
-                    </thead>
-                    <tbody id="table-body-1">
-                        <tr><td colspan="6" style="text-align:center; padding:40px;">Memuat data...</td></tr>
-                    </tbody>
-                </table>
+                <table><thead><tr><th>#</th><th>PAIR</th><th>POSITION</th><th>PNL</th><th>STATUS</th><th>AKSI</th></tr></thead><tbody id="table-body-1"><tr><td colspan="6" style="text-align:center; padding:40px;">Memuat data...</td></tr></tbody></table>
             </div>
         </div>
     </div>
 
-    <!-- Tab 2 -->
     <div id="tab-2" class="tab-content">
         <div class="card">
-            <!-- Panel statistik Tab 2 -->
             <div class="stats-modern">
                 <div class="stats-left">
-                    <div class="stat-block">
-                        <span class="label">WIN</span>
-                        <span class="value" id="win-count-2">0</span>
-                    </div>
-                    <div class="stat-block">
-                        <span class="label">LOSS</span>
-                        <span class="value" id="loss-count-2">0</span>
-                    </div>
-                    <div class="stat-block">
-                        <span class="label">PROFIT</span>
-                        <span class="value profit-text" id="profit-amount-2">+0.00</span>
-                    </div>
-                    <div class="stat-block">
-                        <span class="label">LOSS</span>
-                        <span class="value loss-text" id="loss-amount-2">0.00</span>
-                    </div>
+                    <div class="stat-block"><span class="label">WIN</span><span class="value" id="win-count-2">0</span></div>
+                    <div class="stat-block"><span class="label">LOSS</span><span class="value" id="loss-count-2">0</span></div>
+                    <div class="stat-block"><span class="label">PROFIT</span><span class="value profit-text" id="profit-amount-2">+0.00</span></div>
+                    <div class="stat-block"><span class="label">LOSS</span><span class="value loss-text" id="loss-amount-2">0.00</span></div>
                 </div>
                 <div class="stats-right">
-                    <div class="right-item">
-                        <span class="label">Total Trades</span>
-                        <span class="value" id="total-trades-2">0</span>
-                    </div>
-                    <div class="right-item">
-                        <span class="label">Net P&L</span>
-                        <span class="value" id="net-pnl-2">+0.00</span>
-                    </div>
-                    <div class="right-item">
-                        <span class="label">Win Rate</span>
-                        <span class="value" id="win-rate-2">0%</span>
-                    </div>
+                    <div class="right-item"><span class="label">Total Trades</span><span class="value" id="total-trades-2">0</span></div>
+                    <div class="right-item"><span class="label">Net P&L</span><span class="value" id="net-pnl-2">+0.00</span></div>
+                    <div class="right-item"><span class="label">Win Rate</span><span class="value" id="win-rate-2">0%</span></div>
                 </div>
             </div>
-
             <div class="form-add">
                 <h3 style="margin:0 0 16px 0; font-weight:600;">ADD Transaction VVIP</h3>
                 <form id="form-2">
                     <div class="form-row">
-                        <div class="field">
-                            <label>PAIR</label>
-                            <input type="text" id="pair-2" placeholder="BTC/USDT" required>
-                        </div>
-                        <div class="field">
-                            <label>POSITION</label>
-                            <select id="position-2" required>
-                                <option value="Long">Long</option>
-                                <option value="Short">Short</option>
-                            </select>
-                        </div>
-                        <div class="field">
-                            <label>PNL (+/-)</label>
-                            <input type="number" step="any" id="pnl-2" placeholder="-5.5" required>
-                        </div>
+                        <div class="field"><label>PAIR</label><input type="text" id="pair-2" placeholder="BTC/USDT" required></div>
+                        <div class="field"><label>POSITION</label><select id="position-2" required><option value="Long">Long</option><option value="Short">Short</option></select></div>
+                        <div class="field"><label>PNL (+/-)</label><input type="number" step="any" id="pnl-2" placeholder="-5.5" required></div>
                     </div>
                     <button type="submit" class="btn-primary">Save</button>
                 </form>
             </div>
-
             <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>PAIR</th>
-                            <th>POSITION</th>
-                            <th>PNL</th>
-                            <th>STATUS</th>
-                            <th>AKSI</th>
-                        </tr>
-                    </thead>
-                    <tbody id="table-body-2">
-                        <tr><td colspan="6" style="text-align:center; padding:40px;">Memuat data...</td></tr>
-                    </tbody>
-                </table>
+                <table><thead><tr><th>#</th><th>PAIR</th><th>POSITION</th><th>PNL</th><th>STATUS</th><th>AKSI</th></tr></thead><tbody id="table-body-2"><tr><td colspan="6" style="text-align:center; padding:40px;">Memuat data...</td></tr></tbody></table>
             </div>
         </div>
     </div>
 
-    <!-- Tab 3 (SVIP) -->
     <div id="tab-3" class="tab-content">
         <div class="card">
-            <!-- Panel statistik Tab 3 -->
             <div class="stats-modern">
                 <div class="stats-left">
-                    <div class="stat-block">
-                        <span class="label">WIN</span>
-                        <span class="value" id="win-count-3">0</span>
-                    </div>
-                    <div class="stat-block">
-                        <span class="label">LOSS</span>
-                        <span class="value" id="loss-count-3">0</span>
-                    </div>
-                    <div class="stat-block">
-                        <span class="label">PROFIT</span>
-                        <span class="value profit-text" id="profit-amount-3">+0.00</span>
-                    </div>
-                    <div class="stat-block">
-                        <span class="label">LOSS</span>
-                        <span class="value loss-text" id="loss-amount-3">0.00</span>
-                    </div>
+                    <div class="stat-block"><span class="label">WIN</span><span class="value" id="win-count-3">0</span></div>
+                    <div class="stat-block"><span class="label">LOSS</span><span class="value" id="loss-count-3">0</span></div>
+                    <div class="stat-block"><span class="label">PROFIT</span><span class="value profit-text" id="profit-amount-3">+0.00</span></div>
+                    <div class="stat-block"><span class="label">LOSS</span><span class="value loss-text" id="loss-amount-3">0.00</span></div>
                 </div>
                 <div class="stats-right">
-                    <div class="right-item">
-                        <span class="label">Total Trades</span>
-                        <span class="value" id="total-trades-3">0</span>
-                    </div>
-                    <div class="right-item">
-                        <span class="label">Net P&L</span>
-                        <span class="value" id="net-pnl-3">+0.00</span>
-                    </div>
-                    <div class="right-item">
-                        <span class="label">Win Rate</span>
-                        <span class="value" id="win-rate-3">0%</span>
-                    </div>
+                    <div class="right-item"><span class="label">Total Trades</span><span class="value" id="total-trades-3">0</span></div>
+                    <div class="right-item"><span class="label">Net P&L</span><span class="value" id="net-pnl-3">+0.00</span></div>
+                    <div class="right-item"><span class="label">Win Rate</span><span class="value" id="win-rate-3">0%</span></div>
                 </div>
             </div>
-
             <div class="form-add">
-                <h3 style="margin:0 0 16px 0; font-weight:600;">ADD Transaction </h3>
+                <h3 style="margin:0 0 16px 0; font-weight:600;">ADD Transaction Personal Calls</h3>
                 <form id="form-3">
                     <div class="form-row">
-                        <div class="field">
-                            <label>PAIR</label>
-                            <input type="text" id="pair-3" placeholder="SOL/USDT" required>
-                        </div>
-                        <div class="field">
-                            <label>POSITION</label>
-                            <select id="position-3" required>
-                                <option value="Long">Long</option>
-                                <option value="Short">Short</option>
-                            </select>
-                        </div>
-                        <div class="field">
-                            <label>PNL (+/-)</label>
-                            <input type="number" step="any" id="pnl-3" placeholder="+12.5" required>
-                        </div>
+                        <div class="field"><label>PAIR</label><input type="text" id="pair-3" placeholder="SOL/USDT" required></div>
+                        <div class="field"><label>POSITION</label><select id="position-3" required><option value="Long">Long</option><option value="Short">Short</option></select></div>
+                        <div class="field"><label>PNL (+/-)</label><input type="number" step="any" id="pnl-3" placeholder="+12.5" required></div>
                     </div>
                     <button type="submit" class="btn-primary">Save</button>
                 </form>
             </div>
-
             <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>PAIR</th>
-                            <th>POSITION</th>
-                            <th>PNL</th>
-                            <th>STATUS</th>
-                            <th>AKSI</th>
-                        </tr>
-                    </thead>
-                    <tbody id="table-body-3">
-                        <tr><td colspan="6" style="text-align:center; padding:40px;">Memuat data...</td></tr>
-                    </tbody>
-                </table>
+                <table><thead><tr><th>#</th><th>PAIR</th><th>POSITION</th><th>PNL</th><th>STATUS</th><th>AKSI</th></tr></thead><tbody id="table-body-3"><tr><td colspan="6" style="text-align:center; padding:40px;">Memuat data...</td></tr></tbody></table>
+            </div>
+        </div>
+    </div>
+
+    <div id="tab-4" class="tab-content">
+        <div class="card">
+            <h2 style="margin-bottom:20px; display:flex; align-items:center; gap:8px;">📊 Dashboard All Trades</h2>
+            <div class="stats-modern" style="justify-content:space-around; flex-wrap:wrap;">
+                <div class="stat-block"><span class="label">Total Trades</span><span class="value" id="total-trades-all">0</span></div>
+                <div class="stat-block"><span class="label">Total Win</span><span class="value profit-text" id="total-win-all">0</span></div>
+                <div class="stat-block"><span class="label">Total Loss</span><span class="value loss-text" id="total-loss-all">0</span></div>
+                <div class="stat-block"><span class="label">Win Rate</span><span class="value" id="win-rate-all">0%</span></div>
+                <div class="stat-block"><span class="label">Net P&L</span><span class="value" id="net-pnl-all">+0.00</span></div>
+            </div>
+
+            <div style="margin-top:20px; background:var(--card-bg); padding:20px; border-radius:24px;">
+                <canvas id="pnlChart" style="width:100%; max-height:400px;"></canvas>
+            </div>
+
+            <!-- Rincian per kategori -->
+            <div style="display:flex; gap:20px; margin-top:30px; flex-wrap:wrap;">
+                <div class="kategori-card">
+                    <h3>VIP</h3>
+                    <p>✅ Win: <span id="vip-win">0</span></p>
+                    <p>❌ Loss: <span id="vip-loss">0</span></p>
+                    <p>💰 Total P&L: <span id="vip-pnl">0.00</span></p>
+                </div>
+                <div class="kategori-card">
+                    <h3>VVIP</h3>
+                    <p>✅ Win: <span id="vvip-win">0</span></p>
+                    <p>❌ Loss: <span id="vvip-loss">0</span></p>
+                    <p>💰 Total P&L: <span id="vvip-pnl">0.00</span></p>
+                </div>
+                <div class="kategori-card">
+                    <h3>Personal Calls</h3>
+                    <p>✅ Win: <span id="pc-win">0</span></p>
+                    <p>❌ Loss: <span id="pc-loss">0</span></p>
+                    <p>💰 Total P&L: <span id="pc-pnl">0.00</span></p>
+                </div>
             </div>
         </div>
     </div>
 
     <div class="footer">
-        <span>⚡ powered by Stev</span>
+        <span>⚡PoWered by Stev</span>
     </div>
 </div>
 </body>
 </html>
-
